@@ -1,4 +1,6 @@
 from django.db import models
+from django.utils import timezone
+
 
 __all__ = (
     'TwitterUser',
@@ -46,41 +48,77 @@ class TwitterUser(models.Model):
         """
         :return: 나를 follow하는 다른 TwitterUser QuerySet
         """
-        return
+        return TwitterUser.objects.filter(
+            from_user_relations__to_user=self,
+            from_user_relations__relation_type='f',
+        )
 
     @property
     def following(self):
         """
         :return: 내가 follow하는 다른 TwitterUser QuerySet
         """
-        return
+        return TwitterUser.objects.filter(
+            to_user_relations__from_user=self,
+            to_user_relations__relation_type='f',
+        )
 
     @property
     def block_list(self):
         """
         :return: 내가 block하는 다른 TwitterUser QuerySet
         """
-        return
+        return TwitterUser.objects.filter(
+            to_user_relations__from_user=self,
+            to_user_relations__relation_type='b',
+        )
 
     def follow(self, user):
         """
-        user를 follow하는 Relation을 생성
+        user 를 follow 하는 Relation 을 생성
             1. 이미 존재한다면 만들지 않는다
-            2. user가 block_list에 속한다면 만들지 않는다
+            2. user 가 block_list 에 속한다면 만들지 않는다 (필요없음)
         :param user: TwitterUser
         :return: tuple(Relation instance, created(생성여부 True/False))
         """
-        pass
+        # 관계가 없다면 새 relations을 걸어줌
+        created = False
+
+        if not self.from_user_relations.filter(to_user=user).exists():
+            self.from_user_relations.create(
+                to_user=user,
+                relation_type='f',
+            )
+            created = True
+
+        return self.from_user_relations.get(to_user=user), created
 
     def block(self, user):
         """
-        user를 block하는 Relation을 생성
+        user 를 block 하는 Relation 을 생성
             1. 이미 존재한다면 만들지 않는다
-            2. user가 following에 속한다면 해제시키고 만든다
+            2. user 가 following 에 속한다면 해제시키고 만든다
         :param user: TwitterUser
         :return: tuple(Relation instance, created(생성여부 True/False))
         """
-        pass
+
+        try:
+            # 기존의 관계를 먼저 읽어온다.
+            relation = self.from_user_relations.get(to_user=user)
+            if relation.relation_type == 'f':
+                relation.relation_type = 'b'
+                relation.created_at = timezone.now()
+                relation.save()
+
+        # 기존에 follow 가 안되어있으면?
+        except Relation.DoesNotExist:
+            relation = self.from_user_relations.create(
+                to_user=user,
+                relation_type='b'
+            )
+
+        else:
+            return relation
 
     @property
     def follower_relations(self):
@@ -88,7 +126,7 @@ class TwitterUser(models.Model):
 
         :return: 나를 follow하는 Relation QuerySet
         """
-        return
+        return self.to_user_relations
 
     @property
     def followee_relations(self):
@@ -96,7 +134,7 @@ class TwitterUser(models.Model):
 
         :return: 내가 follow하는 Relation QuerySet
         """
-        return
+        return self.from_user_relations
 
 
 class Relation(models.Model):
@@ -108,11 +146,11 @@ class Relation(models.Model):
         TwitterUser,
         on_delete=models.CASCADE,
         related_name='from_user_relations',
-        # related_query_name의 기본값
+        # related_query_name 의 기본값
         #  기본값:
         #    이 모델 클래스명의 소문자화
-        #  related_name이 지정되어 있을 경우:
-        #    related_name의 값
+        #  related_name 이 지정되어 있을 경우:
+        #    related_name 의 값
         related_query_name='from_user_relation',
     )
     to_user = models.ForeignKey(
@@ -126,3 +164,8 @@ class Relation(models.Model):
         max_length=1,
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (
+            ('from_user', 'to_user'),
+        )

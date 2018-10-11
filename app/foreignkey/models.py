@@ -2,6 +2,7 @@ from django.db import models
 
 
 class Car(models.Model):
+    # related_name, related_query_set 은 기본값 그대로
     manufacturer = models.ForeignKey(
         'Manufacturer',
         on_delete=models.CASCADE,
